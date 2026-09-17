@@ -30,7 +30,7 @@ export async function geocode(name) {
   url.searchParams.set("name", name);
   url.searchParams.set("count", 1);
   const data = await getJSON(url);
-  const hit = data.results?.[0];                        // 못 찾으면 undefined
+  const hit = data.results?.[0]; // 못 찾으면 undefined
   if (!hit) throw new Error(`Unknown place: ${name}`);
   const { latitude, longitude, country } = hit;
   return { name: hit.name, country, latitude, longitude };
@@ -45,9 +45,24 @@ export async function geocode(name) {
 //   forecast_days=<days>
 // 문서: https://open-meteo.com/en/docs
 export async function fetchForecastRaw({ latitude, longitude }, days = 3) {
-  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  const url = new URL("https://api.open-meteo.com/v1/forecast"); // url 객체 생성
   // TODO: 위 파라미터를 url.searchParams.set 으로 하나씩 넣는다
   // TODO: return await getJSON(url)
+  url.searchParams.set("latitude", latitude);
+  url.searchParams.set("longitude", longitude); // url에 위경도 파라미터 추가
+
+  url.searchParams.set("current", "temperature_2m,weather_code");
+  url.searchParams.set(
+    "daily",
+    "temperature_2m_max,temperature_2m_min,weather_code",
+  );
+  url.searchParams.set("timezone", "auto");
+  url.searchParams.set("forecast_days", days);
+  // 필요한 파라미터들 하니씩 보내서 정보 받아오기
+
+  const raw = await getJSON(url); // 실제로 요청 보내서 정보 받기
+
+  return raw;
 }
 
 // P3 (2/2). 원본 응답에서 main.js 가 찍을 것만 추려 작은 객체로 만든다.
@@ -63,7 +78,30 @@ export async function fetchForecastRaw({ latitude, longitude }, days = 3) {
 //     days: [ { date: "2026-09-17", min: 22.1, max: 28.4, code: 2 }, ... ]
 //   }
 export function parseForecast(raw) {
-  // TODO
+  const now = {
+    // now 객체 생성해서 정보 대입
+    temp: raw.current.temperature_2m,
+    unit: raw.current.temperature_2m,
+    code: raw.current.weather_code,
+  };
+
+  const days = []; // daily 관련 값들은 전부 배열 -> 반복문으로 묶어서 하나의 객체로 생성
+
+  for (let i = 0; i < raw.daily.time.length; i++) {
+    days.push({
+      // 반복문 통해서 각각의 값을 push
+      date: raw.daily.time[i],
+      min: raw.daily.temperature_2m_min[i],
+      max: raw.daily.temperature_2m_max[i],
+      code: raw.daily.weather_code[i],
+    });
+  }
+
+  return {
+    // now, days 객체 반환
+    now,
+    days,
+  };
 }
 
 // 두 단계를 묶은 것. P4, P5, P6 가 이 함수를 그대로 가져다 쓴다. 건드릴 필요 없음.
