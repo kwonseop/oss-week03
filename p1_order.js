@@ -41,7 +41,9 @@ sleep(10).then(() => console.log("F"));
 
 console.log("G");
 
-// prediction:
-// actual:
+// prediction: A D E G C F B
+// actual: A D G C F E B
 // why I was wrong (one line per miss):
-//
+// async 함수 내에서 기다린 뒤 출력 한다고 생각하여 A D E G 순서라고 생각했다
+// 이후 G가 실행된 뒤에 순서대로 C F B 가 출력된다고 생각했다
+// 착각한 점은 함수 내여도 await로 인해 E가 대기를 하게 되어 당장 출력하는 것이 아닌 대기열에서 순서대로 출력된다는 점이다
