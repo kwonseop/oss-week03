@@ -31,81 +31,74 @@
 //
 // 커밋 메시지: p4: compare cities
 
-import * as fs from "node:fs/promises";
-import { geocode, fetchForecastRaw, parseForecast } from "./p3_weather.js";
-import { describe } from "./wmo.js";
+// P4. 여러 도시 비교
+
+import { geocode, forecast } from "./p3_weather.js";
 import chalk from "chalk";
 
-const args = process.argv.slice(2);
-const flags = args.filter((a) => a.startsWith("--"));
-const name = args.find((a) => !a.startsWith("--")) ?? "Seoul";
-const cachePath = `cache/${name.toLowerCase()}.json`;
+const names = process.argv.slice(2);
 
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function label(date) {
-  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`;
-}
-
-function printWeather(place, fc) {
-  console.log(
-    `${chalk.bold(place.name)}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
-  );
-
-  console.log(
-    `Now: ${fc.now.temp.toFixed(1)}${fc.now.unit}, ${describe(fc.now.code)}`,
-  );
-
-  for (const day of fc.days) {
-    let maxText = day.max.toFixed(1);
-
-    if (day.max >= 30) {
-      maxText = chalk.red(maxText);
-    } else if (day.max < 10) {
-      maxText = chalk.blue(maxText);
-    }
-
-    console.log(
-      `${label(day.date)}  min ${day.min.toFixed(1)}  max ${maxText}  ${describe(day.code)}`,
-    );
-  }
-}
-
-try {
-  if (flags.includes("--offline")) {
-    let text;
-
-    try {
-      text = await fs.readFile(cachePath, "utf8");
-    } catch {
-      throw new Error(`no cache for ${name.toLowerCase()}`);
-    }
-
-    const { place, raw } = JSON.parse(text);
-    const fc = parseForecast(raw);
-
-    printWeather(place, fc);
-  } else {
-    const place = await geocode(name);
-
-    const raw = await fetchForecastRaw({
-      latitude: place.latitude,
-      longitude: place.longitude,
-    });
-
-    const fc = parseForecast(raw);
-
-    printWeather(place, fc);
-
-    if (flags.includes("--save")) {
-      await fs.writeFile(
-        cachePath,
-        JSON.stringify({ place, raw }, null, 2),
-        "utf8",
-      );
-    }
-  }
-} catch (err) {
-  console.error("Error:", err.message);
+if (names.length === 0) {
+  console.error("Usage: node p4_compare.js <city> [city...]");
   process.exit(1);
+}
+
+// 이름마다 geocode → forecast 작업을 시작, 예시로는 총 4번 실행
+const promises = names.map(async (name) => {
+  const place = await geocode(name); // 현재 도시의 위치 정보 조회
+  const fc = await forecast(place); // 서울 날씨 요청 -> fc / days 의 현재 날씨와 일별 예보를 받음
+
+  return {
+    city: place.name,
+    max: fc.days[0].max, // 오늘의 값이 필요한거니 [0]값 가져옴 (배열엔 오늘, 내일, 모레가 순서대로 들어있음)
+  };
+});
+
+const results = await Promise.allSettled(promises); // 모든 작업이 끝날 때까지 기다림
+//ㄴ 이 Promise들이 성공하든 실패하든 전부 끝날 때까지 기다리고 각각의 결과를 반환
+// 성공 → status: "fulfilled", value에 결과
+// 실패 → status: "rejected", reason에 에러
+
+const success = [];
+const failed = [];
+
+for (let i = 0; i < results.length; i++) {
+  const result = results[i]; // 결과를 하나씩 검사
+
+  // 성공한 경우 value에 결과가 들어있음
+  if (result.status === "fulfilled") {
+    success.push(result.value);
+  } else {
+    // 실패한 경우 reason에 에러 정보가 들어있음
+    failed.push({
+      name: names[i],
+      message: result.reason.message,
+    });
+  }
+}
+
+success.sort((a, b) => b.max - a.max); // 오늘 최고기온 내림차순 정렬
+
+// 성공한 도시 출력
+for (let i = 0; i < success.length; i++) {
+  const { city, max } = success[i];
+
+  const cityText = chalk.bold(city.padEnd(8)); // 도시 이름을 8칸에 맞춘 후 굵게 출력
+
+  let maxText = max.toFixed(1); // 최고 기온을 소수점 첫째 자리까지 출력
+
+  if (max >= 30) {
+    // 최고 기온이 30도 이상이면 빨간색으로 출력
+    maxText = chalk.red(maxText);
+  } else if (max < 10) {
+    // 최고 기온이 10도 미만이면 파란색으로 출력
+    maxText = chalk.blue(maxText);
+  }
+
+  console.log(`${i + 1}. ${cityText} ${maxText}`); // 순위, 도시 이름, 최고 기온 출력
+}
+
+// 실패한 도시 출력
+for (const error of failed) {
+  console.log(`✗ ${error.name}: ${error.message}`);
 }
