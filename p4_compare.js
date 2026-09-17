@@ -33,7 +33,7 @@
 
 import { geocode, forecast } from "./p3_weather.js";
 
-const names = process.argv.slice(2);
+const names = process.argv.slice(2); // 앞의 2개 불필요한 정보 자르고 도시 이름들만 모아서 배열 만듦
 if (names.length === 0) {
   console.error("usage: node p4_compare.js <place> [place ...]");
   process.exit(1);
@@ -44,3 +44,51 @@ if (names.length === 0) {
 //   2. const results = await Promise.allSettled(...)
 //   3. fulfilled / rejected 로 나눔
 //   4. max 내림차순 정렬 → `${i + 1}. ${city.padEnd(8)} ${max.toFixed(1)}` → 실패는 `✗ ${name}: ${message}`
+
+// 이름마다 geocode → forecast 작업을 시작, 예시로는 총 4번 실행
+const promises = names.map(async (name) => {
+  const place = await geocode(name); // 서울의 name, country, 위경도 받음
+  const fc = await forecast(place); // 서울 날씨 요청 -> fc / days 의 현재 날씨와 일별 예보를 받음
+
+  return {
+    city: place.name,
+    max: fc.days[0].max, // 오늘의 값이 필요한거니 [0]값 가져옴 (배열엔 오늘, 내일, 모레가 순서대로 들어있음)
+  };
+});
+
+const results = await Promise.allSettled(promises); // 모든 작업이 끝날 때까지 기다림
+//ㄴ 이 Promise들이 성공하든 실패하든 전부 끝날 때까지 기다리고 각각의 결과를 반환
+// 성공 → status: "fulfilled", value에 결과
+// 실패 → status: "rejected", reason에 에러
+
+const success = [];
+const failed = [];
+
+for (let i = 0; i < results.length; i++) {
+  const result = results[i]; // 결과를 하나씩 검사
+
+  if (result.status === "fulfilled") {
+    // 성공 했다면~
+    success.push(result.value); // success에 push
+  } else {
+    failed.push({
+      // 실패했다면~
+      name: names[i],
+      message: result.reason.message,
+    });
+  }
+}
+
+success.sort((a, b) => b.max - a.max); // 오늘 최고기온 내림차순 정렬
+
+// 성공한 도시 출력
+for (let i = 0; i < success.length; i++) {
+  const { city, max } = success[i];
+
+  console.log(`${i + 1}. ${city.padEnd(8)} ${max.toFixed(1)}`);
+}
+
+// 실패한 도시 출력
+for (const error of failed) {
+  console.log(`✗ ${error.name}: ${error.message}`);
+}
