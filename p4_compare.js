@@ -31,64 +31,81 @@
 //
 // 커밋 메시지: p4: compare cities
 
-import { geocode, forecast } from "./p3_weather.js";
+import * as fs from "node:fs/promises";
+import { geocode, fetchForecastRaw, parseForecast } from "./p3_weather.js";
+import { describe } from "./wmo.js";
+import chalk from "chalk";
 
-const names = process.argv.slice(2); // 앞의 2개 불필요한 정보 자르고 도시 이름들만 모아서 배열 만듦
-if (names.length === 0) {
-  console.error("usage: node p4_compare.js <place> [place ...]");
-  process.exit(1);
+const args = process.argv.slice(2);
+const flags = args.filter((a) => a.startsWith("--"));
+const name = args.find((a) => !a.startsWith("--")) ?? "Seoul";
+const cachePath = `cache/${name.toLowerCase()}.json`;
+
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function label(date) {
+  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`;
 }
 
-// TODO:
-//   1. names.map(async (name) => { ... })  — 이름마다 geocode → forecast, { city, max } 를 돌려주는 Promise
-//   2. const results = await Promise.allSettled(...)
-//   3. fulfilled / rejected 로 나눔
-//   4. max 내림차순 정렬 → `${i + 1}. ${city.padEnd(8)} ${max.toFixed(1)}` → 실패는 `✗ ${name}: ${message}`
+function printWeather(place, fc) {
+  console.log(
+    `${chalk.bold(place.name)}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
+  );
 
-// 이름마다 geocode → forecast 작업을 시작, 예시로는 총 4번 실행
-const promises = names.map(async (name) => {
-  const place = await geocode(name); // 서울의 name, country, 위경도 받음
-  const fc = await forecast(place); // 서울 날씨 요청 -> fc / days 의 현재 날씨와 일별 예보를 받음
+  console.log(
+    `Now: ${fc.now.temp.toFixed(1)}${fc.now.unit}, ${describe(fc.now.code)}`,
+  );
 
-  return {
-    city: place.name,
-    max: fc.days[0].max, // 오늘의 값이 필요한거니 [0]값 가져옴 (배열엔 오늘, 내일, 모레가 순서대로 들어있음)
-  };
-});
+  for (const day of fc.days) {
+    let maxText = day.max.toFixed(1);
 
-const results = await Promise.allSettled(promises); // 모든 작업이 끝날 때까지 기다림
-//ㄴ 이 Promise들이 성공하든 실패하든 전부 끝날 때까지 기다리고 각각의 결과를 반환
-// 성공 → status: "fulfilled", value에 결과
-// 실패 → status: "rejected", reason에 에러
+    if (day.max >= 30) {
+      maxText = chalk.red(maxText);
+    } else if (day.max < 10) {
+      maxText = chalk.blue(maxText);
+    }
 
-const success = [];
-const failed = [];
-
-for (let i = 0; i < results.length; i++) {
-  const result = results[i]; // 결과를 하나씩 검사
-
-  if (result.status === "fulfilled") {
-    // 성공 했다면~
-    success.push(result.value); // success에 push
-  } else {
-    failed.push({
-      // 실패했다면~
-      name: names[i],
-      message: result.reason.message,
-    });
+    console.log(
+      `${label(day.date)}  min ${day.min.toFixed(1)}  max ${maxText}  ${describe(day.code)}`,
+    );
   }
 }
 
-success.sort((a, b) => b.max - a.max); // 오늘 최고기온 내림차순 정렬
+try {
+  if (flags.includes("--offline")) {
+    let text;
 
-// 성공한 도시 출력
-for (let i = 0; i < success.length; i++) {
-  const { city, max } = success[i];
+    try {
+      text = await fs.readFile(cachePath, "utf8");
+    } catch {
+      throw new Error(`no cache for ${name.toLowerCase()}`);
+    }
 
-  console.log(`${i + 1}. ${city.padEnd(8)} ${max.toFixed(1)}`);
-}
+    const { place, raw } = JSON.parse(text);
+    const fc = parseForecast(raw);
 
-// 실패한 도시 출력
-for (const error of failed) {
-  console.log(`✗ ${error.name}: ${error.message}`);
+    printWeather(place, fc);
+  } else {
+    const place = await geocode(name);
+
+    const raw = await fetchForecastRaw({
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+
+    const fc = parseForecast(raw);
+
+    printWeather(place, fc);
+
+    if (flags.includes("--save")) {
+      await fs.writeFile(
+        cachePath,
+        JSON.stringify({ place, raw }, null, 2),
+        "utf8",
+      );
+    }
+  }
+} catch (err) {
+  console.error("Error:", err.message);
+  process.exit(1);
 }

@@ -24,21 +24,22 @@
 import * as fs from "node:fs/promises";
 import { geocode, fetchForecastRaw, parseForecast } from "./p3_weather.js";
 import { describe } from "./wmo.js";
+import chalk from "chalk";
 
 const args = process.argv.slice(2);
-const flags = args.filter((a) => a.startsWith("--")); // ["--save"] 같은 것
-const name = args.find((a) => !a.startsWith("--")) ?? "Seoul"; // 플래그가 아닌 첫 인자
+const flags = args.filter((a) => a.startsWith("--"));
+const name = args.find((a) => !a.startsWith("--")) ?? "Seoul";
 const cachePath = `cache/${name.toLowerCase()}.json`;
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function label(date) {
-  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`; // "2026-09-17" → "Thu 09-17"
+  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`;
 }
 
 function printWeather(place, fc) {
   console.log(
-    `${place.name}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
+    `${chalk.bold(place.name)}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
   );
 
   console.log(
@@ -46,13 +47,20 @@ function printWeather(place, fc) {
   );
 
   for (const day of fc.days) {
+    let maxText = day.max.toFixed(1);
+
+    if (day.max >= 30) {
+      maxText = chalk.red(maxText);
+    } else if (day.max < 10) {
+      maxText = chalk.blue(maxText);
+    }
+
     console.log(
-      `${label(day.date)}  min ${day.min.toFixed(1)}  max ${day.max.toFixed(1)}  ${describe(day.code)}`,
+      `${label(day.date)}  min ${day.min.toFixed(1)}  max ${maxText}  ${describe(day.code)}`,
     );
   }
 }
 
-// TODO (P6): --save, --offline (README 참고)
 try {
   if (flags.includes("--offline")) {
     let text;
