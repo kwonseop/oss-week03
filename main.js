@@ -26,11 +26,12 @@ import { geocode, forecast } from "./p3_weather.js";
 import { describe } from "./wmo.js";
 
 const args = process.argv.slice(2);
-const flags = args.filter((a) => a.startsWith("--"));          // ["--save"] 같은 것
+const flags = args.filter((a) => a.startsWith("--")); // ["--save"] 같은 것
 const name = args.find((a) => !a.startsWith("--")) ?? "Seoul"; // 플래그가 아닌 첫 인자
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-function label(date) {                       // "2026-09-17" → "Thu 09-17"
+function label(date) {
+  // "2026-09-17" → "Thu 09-17"
   return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`;
 }
 
@@ -40,8 +41,19 @@ try {
 
   // TODO (P3): 세 부분 출력
   //   1. `${place.name}, ${place.country} (${lat}, ${lon})`    lat/lon 은 toFixed(2)
+  console.log(
+    `${place.name}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
+  );
   //   2. `Now: ${temp.toFixed(1)}${unit}, ${describe(code)}`
+  console.log(
+    `Now: ${fc.now.temp.toFixed(1)}${fc.now.unit}, ${describe(fc.now.code)}`,
+  );
   //   3. 날마다: `${label(date)}  min ${min}  max ${max}  ${describe(code)}`    min/max 는 toFixed(1)
+  for (const day of fc.days) {
+    console.log(
+      `${label(day.date)}  min ${day.min.toFixed(1)}  max ${day.max.toFixed(1)}  ${describe(day.code)}`,
+    );
+  }
 
   // TODO (P6): --save, --offline (README 참고)
 } catch (err) {

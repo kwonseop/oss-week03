@@ -62,6 +62,8 @@ export async function fetchForecastRaw({ latitude, longitude }, days = 3) {
 
   const raw = await getJSON(url); // 실제로 요청 보내서 정보 받기
 
+  //console.log(JSON.stringify(raw, null, 2));
+
   return raw;
 }
 
@@ -81,7 +83,7 @@ export function parseForecast(raw) {
   const now = {
     // now 객체 생성해서 정보 대입
     temp: raw.current.temperature_2m,
-    unit: raw.current.temperature_2m,
+    unit: raw.current_units.temperature_2m,
     code: raw.current.weather_code,
   };
 
