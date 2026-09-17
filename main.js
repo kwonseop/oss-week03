@@ -21,41 +21,72 @@
 //   자세한 것은 README P6.
 //
 // 커밋 메시지: p3: forecast cli  /  p6: cache and offline
-
-import { geocode, forecast } from "./p3_weather.js";
+import * as fs from "node:fs/promises";
+import { geocode, fetchForecastRaw, parseForecast } from "./p3_weather.js";
 import { describe } from "./wmo.js";
 
 const args = process.argv.slice(2);
 const flags = args.filter((a) => a.startsWith("--")); // ["--save"] 같은 것
 const name = args.find((a) => !a.startsWith("--")) ?? "Seoul"; // 플래그가 아닌 첫 인자
+const cachePath = `cache/${name.toLowerCase()}.json`;
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function label(date) {
-  // "2026-09-17" → "Thu 09-17"
-  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`;
+  return `${WEEKDAY[new Date(date).getUTCDay()]} ${date.slice(5)}`; // "2026-09-17" → "Thu 09-17"
 }
 
-try {
-  const place = await geocode(name);
-  const fc = await forecast(place);
-
-  // TODO (P3): 세 부분 출력
-  //   1. `${place.name}, ${place.country} (${lat}, ${lon})`    lat/lon 은 toFixed(2)
+function printWeather(place, fc) {
   console.log(
     `${place.name}, ${place.country} (${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)})`,
   );
-  //   2. `Now: ${temp.toFixed(1)}${unit}, ${describe(code)}`
+
   console.log(
     `Now: ${fc.now.temp.toFixed(1)}${fc.now.unit}, ${describe(fc.now.code)}`,
   );
-  //   3. 날마다: `${label(date)}  min ${min}  max ${max}  ${describe(code)}`    min/max 는 toFixed(1)
+
   for (const day of fc.days) {
     console.log(
       `${label(day.date)}  min ${day.min.toFixed(1)}  max ${day.max.toFixed(1)}  ${describe(day.code)}`,
     );
   }
+}
 
-  // TODO (P6): --save, --offline (README 참고)
+// TODO (P6): --save, --offline (README 참고)
+try {
+  if (flags.includes("--offline")) {
+    let text;
+
+    try {
+      text = await fs.readFile(cachePath, "utf8");
+    } catch {
+      throw new Error(`no cache for ${name.toLowerCase()}`);
+    }
+
+    const { place, raw } = JSON.parse(text);
+    const fc = parseForecast(raw);
+
+    printWeather(place, fc);
+  } else {
+    const place = await geocode(name);
+
+    const raw = await fetchForecastRaw({
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+
+    const fc = parseForecast(raw);
+
+    printWeather(place, fc);
+
+    if (flags.includes("--save")) {
+      await fs.writeFile(
+        cachePath,
+        JSON.stringify({ place, raw }, null, 2),
+        "utf8",
+      );
+    }
+  }
 } catch (err) {
   console.error("Error:", err.message);
   process.exit(1);
