@@ -39,7 +39,9 @@ const query = process.argv[2] ?? "광운대학교";
 //    node --env-file=.env 가 이 줄이 실행되기 전에 .env 를 process.env 에 넣어 둔다.
 const KEY = process.env.KAKAO_REST_KEY;
 if (!KEY) {
-  console.error("Error: KAKAO_REST_KEY is not set. Copy .env.example to .env and run with --env-file=.env");
+  console.error(
+    "Error: KAKAO_REST_KEY is not set. Copy .env.example to .env and run with --env-file=.env",
+  );
   process.exit(1);
 }
 
@@ -52,6 +54,24 @@ export async function searchPlace(query, size = 3) {
   // TODO: new URL + searchParams 로 URL 을 만든다 (query, size)
   // TODO: const data = await getJSON(url, { headers: { Authorization: `KakaoAK ${KEY}` } });
   // TODO: return data.documents.map(...)  →  { name, address, latitude: Number(d.y), longitude: Number(d.x) }
+  const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json"); // 새로운 URL 생성
+
+  url.searchParams.set("query", query); // 검색 대상
+  url.searchParams.set("size", size); // 검색 개수
+
+  const data = await getJSON(url, {
+    headers: {
+      Authorization: `KakaoAK ${KEY}`, // 실제 API 요청
+    },
+  });
+
+  return data.documents.map((d) => ({
+    // Kakao의 documents 각 항목을 사용할 형태로 변환
+    name: d.place_name,
+    address: d.address_name,
+    latitude: Number(d.y),
+    longitude: Number(d.x),
+  }));
 }
 
 try {
@@ -59,9 +79,22 @@ try {
   if (places.length === 0) throw new Error(`No place found for: ${query}`);
 
   // TODO: 후보마다 한 줄: `${i + 1}. ${name}  ${address}  (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+  for (let i = 0; i < places.length; i++) {
+    // 반복문을 통해 각 후보마다 원하는 형태로 출력
+    const place = places[i];
+
+    console.log(
+      `${i + 1}. ${place.name}  ${place.address}  (${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)})`,
+    );
+  }
 
   // TODO: const fc = await forecast(places[0]);   // places[0] 에 latitude/longitude 가 있어서 forecast 가 그대로 받는다
+  const fc = await forecast(places[0]); // 첫 번째 검색 후보의 좌표를 이용해 날씨 조회
   // TODO: `Now at ${name}: ${temp.toFixed(1)}${unit}, ${describe(code)}`
+  console.log(
+    // 현재 날씨 출력
+    `Now at ${places[0].name}: ${fc.now.temp.toFixed(1)}${fc.now.unit}, ${describe(fc.now.code)}`,
+  );
 } catch (err) {
   console.error("Error:", err.message);
   process.exit(1);
